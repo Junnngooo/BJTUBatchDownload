@@ -20,7 +20,7 @@
 
 | 要求 | 说明 |
 |------|------|
-| 浏览器 | Chrome / Chromium（Manifest V3） |
+| 浏览器 | Chrome / Edge |
 | 网络 | 校园网或 VPN（能访问 `123.121.147.7:88`） |
 | 登录状态 | 已在浏览器中登录 MIS（`mis.bjtu.edu.cn`） |
 
@@ -57,14 +57,6 @@
 - **MIS Cookie**：浏览器自动携带，用于课程平台主页鉴权
 - **`sessionId` 请求头**：从课程平台页面的 JS 脚本中提取（32 位大写十六进制），调用课件列表 / 下载 URL 等 API 时必须携带
 
-### 关键 API
-
-| 接口 | 说明 |
-|------|------|
-| `GET /back/coursePlatform/course.shtml?method=getCourseList` | 获取课程列表（API 回退方案） |
-| `GET /back/coursePlatform/courseResource.shtml?method=stuQueryUploadResourceForCourseList` | 获取课程课件列表 |
-| `POST /back/resourceSpace.shtml?method=rpinfoDownloadUrl&rpId=xxx` | 解析文件真实下载 URL，返回 `{ rpUrl: "..." }` |
-
 ### 扩展名识别（4 级优先链）
 
 下载代理 URL 形如 `/download.shtml?p=rp&f=xxx`，路径无法直接判断文件类型。插件按以下顺序尝试获取正确扩展名：
@@ -87,42 +79,6 @@
    - `\x1F\x8B` → `.gz`
 
 扫描阶段也会从 `rpName`（文件名字段）本身提取扩展名作为 `fileType` 的补充来源。
-
-### 遇到的问题与解决方案
-
-#### 问题一：大量文件下载后无扩展名
-
-**原因**：  
-- 平台 API 的 `RP_PRIX` 字段对许多文件返回字符串 `'undefined'`（而非空值）
-- `rpName` 本身不含扩展名（如 "Lecture_1_Ch01_Introduction_1"）
-- 下载代理 URL 以 `.shtml` 结尾，路径提取逻辑正确排除了它，但也因此无法获得扩展名
-
-**解决方案**：  
-建立上述 4 级优先链，魔数检测作为最终兜底，扫描阶段同步补充 `fileType` 来源。
-
-#### 问题二：URL 路径误识别服务端脚本后缀
-
-**原因**：  
-早期代码直接取 URL 路径的最后一个 `.xxx`，将 `.shtml` 误识别为文件扩展名。
-
-**解决方案**：  
-维护服务端脚本后缀黑名单（`.shtml .html .htm .php .asp .aspx .jsp .do .action .cgi .pl`），命中则跳过路径提取，继续下一优先级。
-
-#### 问题三：Service Worker 重启后 `pageTabId` 丢失
-
-**原因**：  
-Chrome MV3 的 Service Worker 在空闲时会被浏览器终止，重启后内存变量全部丢失，导致无法向插件页面广播下载进度。
-
-**解决方案**：  
-`broadcastToPage` 函数先尝试缓存的 `pageTabId`，失败后动态查询 URL 匹配 `src/page/page.html` 的标签页，同时每次收到页面消息时顺带恢复 `pageTabId`。
-
-#### 问题四：GBK 编码导致中文乱码
-
-**原因**：  
-平台页面和部分 API 使用 GBK 编码，`sessionId` 等关键信息通过服务端渲染内嵌在 JS 脚本中。
-
-**解决方案**：  
-通过正则从页面 `document.scripts` 中提取 `setRequestHeader('sessionId', 'XXXX')` 模式，直接读取原始字符串，绕过编码问题。API 请求使用 `fetch` + `json()` 时浏览器根据 `Content-Type` 自动处理编码。
 
 ---
 
