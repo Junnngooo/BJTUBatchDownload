@@ -27,6 +27,7 @@
         </div>
         <button id="btnRecheck" class="btn btn-xs btn-ghost-top" title="重新检测连接状态">重检</button>
       </div>
+      <span class="conn-caveat">检测失败时可直接尝试下载</span>
     </div>
     <div class="topbar-right">
       <div class="keepalive-row">
@@ -116,6 +117,7 @@
         <div class="progress-header">
           <div class="progress-bar-wrap">
             <div id="progressBar" class="progress-bar" style="width:0%"></div>
+            <span id="progressIcon" class="progress-icon"></span>
           </div>
           <span id="progressText" class="progress-text">0 / 0</span>
           <button id="btnStopDownload" class="btn btn-danger btn-sm hidden">停止</button>

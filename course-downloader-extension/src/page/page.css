@@ -97,7 +97,7 @@ body {
   opacity: 0.55;
 }
 .topbar-left   { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.topbar-center { flex: 1; display: flex; justify-content: center; }
+.topbar-center { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; }
 .topbar-right  { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
 .logo {
@@ -108,6 +108,13 @@ body {
   color: var(--cyan);
   padding-left: 10px;
   border-left: 2px solid var(--cyan);
+}
+
+.conn-caveat {
+  font-size: 10px;
+  color: var(--tx-3);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 /* ── Connection badges ── */
@@ -449,7 +456,7 @@ body {
 .course-group-toggle { font-size: 12px; color: var(--tx-3); width: 20px; text-align: center; }
 
 /* File table */
-.file-table { width: 100%; border-collapse: collapse; }
+.file-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .file-table th {
   padding: 6px 12px;
   text-align: left;
@@ -465,9 +472,18 @@ body {
   border-bottom: 1px solid var(--bd-0);
   font-size: 12.5px;
   vertical-align: middle;
+  overflow: hidden;
 }
 .file-table tr:last-child td { border-bottom: none; }
 .file-table tr:hover td { background: var(--bg-3); }
+/* Tighten checkbox column's right edge → filename starts 10px away */
+.file-table th:nth-child(1),
+.file-table td:nth-child(1) { padding-right: 4px; }
+.file-table th:nth-child(2),
+.file-table td:nth-child(2) { padding-left: 6px; }
+/* Status column: header and tags centre-aligned */
+.file-table th:last-child,
+.file-table td:last-child { text-align: center; }
 .file-name { max-width: 460px; }
 .file-name-text {
   display: block;
@@ -512,15 +528,40 @@ body {
   border-bottom: 1px solid var(--bd-1);
   flex-shrink: 0;
 }
+@keyframes shimmer {
+  0%   { transform: translateX(-200%); }
+  100% { transform: translateX(400%); }
+}
+
 .progress-bar-wrap {
-  flex: 1; height: 6px; background: var(--bg-4); border-radius: 6px; overflow: hidden;
+  flex: 1; height: 6px; background: var(--bg-4); border-radius: 6px;
+  position: relative; overflow: visible;
 }
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--cyan) 0%, var(--green) 100%);
+  background: var(--cyan);
   border-radius: 6px; transition: width 0.3s var(--ease);
   box-shadow: 0 0 8px var(--cyan-glow);
+  position: relative; overflow: hidden;
 }
+.progress-bar::after {
+  content: '';
+  position: absolute; top: 0; left: 0;
+  width: 40%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.38), transparent);
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+/* Icon hook — sits at the leading edge of the bar.
+   Populate #progressIcon with content to activate it. */
+.progress-icon {
+  display: none;
+  position: absolute;
+  top: 50%; transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 2;
+  line-height: 1;
+}
+.progress-icon:not(:empty) { display: flex; align-items: center; }
 .progress-text { font-size: 11px; color: var(--tx-3); white-space: nowrap; font-family: var(--font-mono); }
 .progress-log {
   flex: 1; overflow-y: auto; padding: 8px 14px;

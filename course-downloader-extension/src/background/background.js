@@ -526,7 +526,11 @@ async function downloadSingleFile(file, rootFolder) {
     const filename = parts.map(sanitize).join('/');
 
     await new Promise((resolve) => {
+      let slowTimer, verySlowTimer;
+
       const done = (status, msg) => {
+        clearTimeout(slowTimer);
+        clearTimeout(verySlowTimer);
         if (status === 'success') {
           chrome.storage.local.get({ downloadedRpIds: [] }, ({ downloadedRpIds }) => {
             const s = new Set(downloadedRpIds);
@@ -543,6 +547,14 @@ async function downloadSingleFile(file, rootFolder) {
           done('error', chrome.runtime.lastError?.message || '下载启动失败');
           return;
         }
+
+        slowTimer = setTimeout(() => {
+          broadcastToPage({ action: 'downloadProgress', type: 'hint', msg: `${file.name}：下载较慢，可能是学校网络较慢或文件较大` });
+        }, 45 * 1000);
+
+        verySlowTimer = setTimeout(() => {
+          broadcastToPage({ action: 'downloadProgress', type: 'hint', msg: `${file.name}：下载时间过长，请确认能正常登录课程平台` });
+        }, 3 * 60 * 1000);
 
         // 安全兜底：若 onChanged 始终未触发（SW 生命周期问题），30分钟后强制推进
         const safeTimer = setTimeout(() => {

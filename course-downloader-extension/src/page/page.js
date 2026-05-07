@@ -33,26 +33,27 @@ async function init() {
     .catch(() => { window._courseLoading = false; renderCourses([]); });
 }
 
-// Standalone connectivity check — always updates dots, never leaves them stuck at "checking"
+// Direct connectivity check from the page itself (extension host_permissions covers both domains).
+// Avoids service-worker message-passing entirely — no wakeup race, no silent swallow.
 async function checkAndUpdateConn() {
   setConnStatus('mis', 'checking');
   setConnStatus('course', 'checking');
-  try {
-    const conn = await chrome.runtime.sendMessage({ action: 'checkConnectivity' });
-    if (conn) {
-      updateConnUI(conn);
-    } else {
-      setConnStatus('mis', 'err');
-      document.getElementById('misLabel').textContent = 'MIS 检测失败';
-      setConnStatus('course', 'err');
-      document.getElementById('courseLabel').textContent = '课程平台 检测失败';
-    }
-  } catch {
-    setConnStatus('mis', 'err');
-    document.getElementById('misLabel').textContent = 'MIS 不可达';
-    setConnStatus('course', 'err');
-    document.getElementById('courseLabel').textContent = '课程平台 不可达';
+
+  async function probe(url) {
+    try {
+      const r = await fetch(url, {
+        credentials: 'include', redirect: 'follow',
+        cache: 'no-store', signal: AbortSignal.timeout(8000)
+      });
+      return r.status < 500;
+    } catch { return false; }
   }
+
+  const [mis, course] = await Promise.all([
+    probe('https://mis.bjtu.edu.cn/'),
+    probe('http://123.121.147.7:88/ve/')
+  ]);
+  updateConnUI({ mis, course });
 }
 
 function updateConnUI(conn) {
@@ -240,7 +241,7 @@ function renderFileGroup(course, files) {
     table.innerHTML = `
       <thead><tr>
         <th style="width:30px"><input type="checkbox" id="chk-all-${esc(num)}"></th>
-        <th>文件名</th><th style="width:70px">状态</th>
+        <th>文件名</th><th style="width:82px">状态</th>
       </tr></thead>
       <tbody>
         ${files.map(f => `
@@ -334,11 +335,6 @@ function hideConnWarning() {
 function startDownload(files) {
   if (!files.length) { alert('没有可下载的文件'); return; }
   if (isDownloading) { alert('下载进行中，请等待或先停止'); return; }
-  if (connState.mis === false && connState.course === false) {
-    showConnWarning();
-    return;
-  }
-
   const duplicates = files.filter(f => downloadedSet.has(f.rpId));
   if (duplicates.length > 0) {
     showDuplicateModal(files, duplicates, (finalFiles) => {
@@ -468,6 +464,8 @@ chrome.runtime.onMessage.addListener((msg) => {
       isDownloading = false;
       document.getElementById('btnStopDownload').classList.add('hidden');
       addLog(`下载完成：${msg.completed}/${msg.total}`, 'info');
+    } else if (msg.type === 'hint') {
+      addLog(msg.msg, 'warn');
     }
   }
   if (msg.action === 'keepAliveStatus') {
@@ -479,6 +477,8 @@ function updateProgressBar(done, total) {
   const pct = total > 0 ? Math.round(done / total * 100) : 0;
   document.getElementById('progressBar').style.width = pct + '%';
   document.getElementById('progressText').textContent = `${done} / ${total} (${pct}%)`;
+  const icon = document.getElementById('progressIcon');
+  if (icon) icon.style.left = pct + '%';
 }
 
 function addLog(msg, type = 'info') {
