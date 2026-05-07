@@ -8,6 +8,7 @@ let isDownloading = false;
 let completedDl = 0, totalDl = 0;
 let isScanningAll = false;
 let scanStopRequested = false;
+let connState = { mis: null, course: null }; // null=checking, true=ok, false=err
 
 // ── 启动 ──
 document.addEventListener('DOMContentLoaded', async () => {
@@ -17,20 +18,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function init() {
-  setConnStatus('mis', 'checking');
-  setConnStatus('course', 'checking');
-
-  // 立即显示主界面，不等任何网络请求
   showMainContent();
   window._courseLoading = true;
   renderCourses([]);
 
-  // 后台异步：连接检测
-  chrome.runtime.sendMessage({ action: 'checkConnectivity' })
-    .then(conn => { if (conn) updateConnUI(conn); })
-    .catch(() => {});
+  checkAndUpdateConn(); // independent — always resolves and updates UI
 
-  // 后台异步：自动打开课程页、加载课程列表
   getPageInfo()
     .then(info => {
       window._courseLoading = false;
@@ -40,7 +33,32 @@ async function init() {
     .catch(() => { window._courseLoading = false; renderCourses([]); });
 }
 
+// Standalone connectivity check — always updates dots, never leaves them stuck at "checking"
+async function checkAndUpdateConn() {
+  setConnStatus('mis', 'checking');
+  setConnStatus('course', 'checking');
+  try {
+    const conn = await chrome.runtime.sendMessage({ action: 'checkConnectivity' });
+    if (conn) {
+      updateConnUI(conn);
+    } else {
+      setConnStatus('mis', 'err');
+      document.getElementById('misLabel').textContent = 'MIS 检测失败';
+      setConnStatus('course', 'err');
+      document.getElementById('courseLabel').textContent = '课程平台 检测失败';
+    }
+  } catch {
+    setConnStatus('mis', 'err');
+    document.getElementById('misLabel').textContent = 'MIS 不可达';
+    setConnStatus('course', 'err');
+    document.getElementById('courseLabel').textContent = '课程平台 不可达';
+  }
+}
+
 function updateConnUI(conn) {
+  connState.mis    = !!conn.mis;
+  connState.course = !!conn.course;
+
   setConnStatus('mis', conn.mis ? 'ok' : 'err');
   document.getElementById('misLabel').textContent = conn.mis ? 'MIS ✓' : 'MIS 不可达';
 
@@ -137,6 +155,7 @@ async function scanOneCourse(courseNum) {
     const canDl = res.files.filter(f => f.canDownload).length;
     setCourseStatus(courseNum, 'done', `${canDl}/${res.files.length} 可下载`);
     renderFileGroup(course, res.files);
+    checkDownloadedByHistory(courseNum).catch(() => {});
     updateFileStats();
   } else {
     setCourseStatus(courseNum, 'error', '失败');
@@ -156,7 +175,7 @@ async function scanAllCourses() {
 
   isScanningAll = true;
   scanStopRequested = false;
-  btn.textContent = '⏹ 停止扫描';
+  btn.textContent = '停止扫描';
   btn.classList.remove('btn-primary');
   btn.classList.add('btn-danger');
 
@@ -171,7 +190,7 @@ async function scanAllCourses() {
   isScanningAll = false;
   scanStopRequested = false;
   btn.disabled = false;
-  btn.textContent = '🔍 扫描全部课件';
+  btn.textContent = '扫描全部课件';
   btn.classList.remove('btn-danger');
   btn.classList.add('btn-primary');
   updateFileStats();
@@ -221,7 +240,7 @@ function renderFileGroup(course, files) {
     table.innerHTML = `
       <thead><tr>
         <th style="width:30px"><input type="checkbox" id="chk-all-${esc(num)}"></th>
-        <th>文件名</th><th style="width:60px">类型</th><th style="width:70px">状态</th>
+        <th>文件名</th><th style="width:70px">状态</th>
       </tr></thead>
       <tbody>
         ${files.map(f => `
@@ -234,10 +253,9 @@ function renderFileGroup(course, files) {
               : '<input type="checkbox" disabled>'
             }</td>
             <td class="file-name">
-              <span class="file-name-text" title="${esc(f.name)}">${fileIcon(f.name, f.fileType)} ${esc(f.name)}</span>
-              ${f.folderPath ? `<span class="file-path">📁 ${esc(f.folderPath)}</span>` : ''}
+              <span class="file-name-text" title="${esc(f.name)}">${esc(f.name)}</span>
+              ${f.folderPath ? `<span class="file-path">${esc(f.folderPath)}</span>` : ''}
             </td>
-            <td><span class="type-badge">${esc(fileTypeName(f))}</span></td>
             <td id="st-${esc(f.rpId)}">${
               !f.canDownload ? '<span class="tag-locked">受限</span>'
               : downloadedSet.has(f.rpId) ? '<span class="tag-downloaded">已下载</span>'
@@ -306,9 +324,20 @@ function buildSelectedFilesList() {
   return files;
 }
 
+function showConnWarning() {
+  document.getElementById('connAlert').classList.remove('hidden');
+}
+function hideConnWarning() {
+  document.getElementById('connAlert').classList.add('hidden');
+}
+
 function startDownload(files) {
   if (!files.length) { alert('没有可下载的文件'); return; }
   if (isDownloading) { alert('下载进行中，请等待或先停止'); return; }
+  if (connState.mis === false && connState.course === false) {
+    showConnWarning();
+    return;
+  }
 
   const duplicates = files.filter(f => downloadedSet.has(f.rpId));
   if (duplicates.length > 0) {
@@ -352,7 +381,7 @@ function showDuplicateModal(allFiles, duplicates, callback) {
   list.innerHTML = duplicates.map(f => `
     <label class="dup-item">
       <input type="checkbox" class="dup-chk" data-rpid="${esc(f.rpId)}" checked>
-      <span class="dup-name" title="${esc(f.name)}">${fileIcon(f.name, f.fileType)} ${esc(f.name)}</span>
+      <span class="dup-name" title="${esc(f.name)}">${esc(f.name)}</span>
       <span class="dup-course">${esc(f.courseName || '')}</span>
     </label>`).join('');
 
@@ -374,6 +403,39 @@ function markFileDownloaded(rpId) {
   if (td) td.innerHTML = '<span class="tag-downloaded">已下载</span>';
 }
 
+// 扫描完成后，与 chrome.downloads 历史交叉验证已下载状态
+// 即使 storage 被清除，只要文件还在下载历史中就能正确标记
+async function checkDownloadedByHistory(courseNum) {
+  const files = courseFiles[courseNum];
+  if (!files?.length) return;
+
+  const rootFolder = document.getElementById('rootFolder').value.trim() || '课程资料';
+  const course = courses.find(c => c.courseNum === courseNum);
+  const sanitize = s => s.replace(/[\\/:*?"<>|]/g, '_').trim();
+
+  let completed;
+  try {
+    completed = await chrome.downloads.search({ state: 'complete', limit: 5000 });
+  } catch { return; }
+
+  // 统一为正斜杠 + 小写，便于 includes 比对
+  const dlPaths = completed.map(d => d.filename.replace(/\\/g, '/').toLowerCase());
+
+  let anyNew = false;
+  for (const file of files) {
+    if (!file.canDownload || downloadedSet.has(file.rpId)) continue;
+    const parts = [rootFolder, course?.name || courseNum, file.folderPath, file.name]
+      .filter(Boolean).map(sanitize);
+    const basePath = parts.join('/').toLowerCase();
+    if (dlPaths.some(p => p.includes(basePath))) {
+      downloadedSet.add(file.rpId);
+      markFileDownloaded(file.rpId);
+      anyNew = true;
+    }
+  }
+  if (anyNew) chrome.storage.local.set({ downloadedRpIds: [...downloadedSet] });
+}
+
 // ── Keep-alive ──
 async function loadStoredSettings() {
   const { keepAliveEnabled, lastKeepAlive, downloadedRpIds } = await chrome.storage.local.get(['keepAliveEnabled', 'lastKeepAlive', 'downloadedRpIds']);
@@ -385,7 +447,7 @@ async function loadStoredSettings() {
 function updateKeepAliveInfo(status, time) {
   const info = document.getElementById('keepAliveInfo');
   info.textContent = status === 'ok' ? `上次: ${time}` : '刷新失败';
-  info.style.color = status === 'ok' ? 'rgba(255,255,255,.7)' : '#ff6b6b';
+  info.style.color = status === 'ok' ? '#9ca3af' : '#dc2626';
 }
 
 // ── 进度监听 ──
@@ -436,8 +498,9 @@ function switchTab(name) {
 
 // ── 事件绑定 ──
 function bindEvents() {
-  document.getElementById('btnRecheck').addEventListener('click', init);
-  document.getElementById('btnRetryCheck').addEventListener('click', init);
+  document.getElementById('btnRecheck').addEventListener('click', () => { hideConnWarning(); checkAndUpdateConn(); });
+  document.getElementById('btnRetryCheck').addEventListener('click', () => { hideConnWarning(); init(); });
+  document.getElementById('connAlertClose').addEventListener('click', hideConnWarning);
   document.getElementById('btnScanAll').addEventListener('click', scanAllCourses);
 
   document.getElementById('btnSelectAllCourses').addEventListener('click', () => {
@@ -508,12 +571,7 @@ function bindEvents() {
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-function fileIcon(name, type) {
-  const e = (type || (name||'').split('.').pop()).toLowerCase();
-  return {pdf:'📄',ppt:'📊',pptx:'📊',doc:'📝',docx:'📝',zip:'📦',rar:'📦','7z':'📦',
-          mp4:'🎬',avi:'🎬',mkv:'🎬',mp3:'🎵',xls:'📈',xlsx:'📈',
-          jpg:'🖼',jpeg:'🖼',png:'🖼',gif:'🖼',txt:'📃',py:'💻',java:'💻',c:'💻',cpp:'💻'}[e] || '📎';
-}
+function fileIcon() { return ''; }
 
 function fileTypeName(f) {
   const t = (f.fileType || '').trim().toLowerCase();

@@ -3,16 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <title>MIS 课件批量下载器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="page.css">
 </head>
 <body>
   <!-- ── 顶部栏 ── -->
   <header class="topbar">
     <div class="topbar-left">
-      <span class="logo">📚 MIS 课件下载器</span>
+      <span class="logo">MIS 课件下载器</span>
     </div>
     <div class="topbar-center">
-      <!-- 联通状态 -->
       <div class="conn-badges">
         <div class="conn-item" id="misBadge" title="MIS 登录状态">
           <span class="conn-dot" id="misDot"></span>
@@ -23,11 +25,10 @@
           <span class="conn-dot" id="courseDot"></span>
           <span id="courseLabel">课程平台 检测中</span>
         </div>
-        <button id="btnRecheck" class="btn btn-xs btn-ghost-top" title="重新检测">↻</button>
+        <button id="btnRecheck" class="btn btn-xs btn-ghost-top" title="重新检测连接状态">重检</button>
       </div>
     </div>
     <div class="topbar-right">
-      <!-- Keep-alive 开关 -->
       <div class="keepalive-row">
         <label class="toggle-label">
           <span>防过期</span>
@@ -36,12 +37,10 @@
             <span class="toggle-thumb"></span>
           </label>
         </label>
-        <span class="ka-info-icon"
-          data-tooltip="防止 MIS 登录会话因长时间未操作而过期。开启后每 5 分钟自动向 MIS 首页发送一次带 Cookie 的心跳请求，触发服务器端会话续期，避免下载途中突然失效需要重新登录。底层使用 Chrome Alarms API 定时唤醒 Service Worker，在后台静默发起请求，不打开任何新页面。">ⓘ</span>
+        <span class="ka-info-icon" data-tooltip="开启后每 5 分钟自动刷新登录状态，防止批量下载过程中 MIS 账号因长时间未操作而掉线，避免中途需要重新登录。">?</span>
         <span id="keepAliveInfo" class="keepalive-info"></span>
-        <button id="btnPingNow" class="btn btn-xs btn-ghost-top" title="立即向 MIS 发送心跳、刷新登录会话">刷新</button>
+        <button id="btnPingNow" class="btn btn-xs btn-ghost-top" title="立即向 MIS 发送心跳、刷新登录会话">刷新会话</button>
       </div>
-      <!-- 根目录 -->
       <label class="setting-inline">
         目录：<input type="text" id="rootFolder" value="课程资料" style="width:80px">
       </label>
@@ -51,7 +50,7 @@
   <!-- ── 登录提示 ── -->
   <div id="loginWarning" class="login-warning hidden">
     <div class="warning-box">
-      <div class="warning-icon">⚠</div>
+      <div class="warning-icon"></div>
       <div class="warning-text">
         <h3 id="warningTitle">请先登录 MIS 系统</h3>
         <p id="warningDetail">未检测到有效的登录状态，请先在浏览器中登录 BJTU MIS 系统，然后进入课程平台，再回到本页面操作。</p>
@@ -72,11 +71,11 @@
         <span id="courseCount" class="count-badge">0</span>
       </div>
       <div class="sidebar-actions">
-        <button id="btnScanAll" class="btn btn-primary btn-full">🔍 扫描全部课件</button>
+        <button id="btnScanAll" class="btn btn-primary btn-full">扫描全部课件</button>
         <div class="select-row">
           <button id="btnSelectAllCourses" class="btn btn-xs">全选</button>
           <button id="btnDeselectCourses" class="btn btn-xs">取消</button>
-          <button id="btnDownloadSelected" class="btn btn-xs btn-success">⬇ 下载已选</button>
+          <button id="btnDownloadSelected" class="btn btn-xs btn-success">下载已选</button>
         </div>
       </div>
       <div id="courseList" class="course-list">
@@ -91,6 +90,12 @@
         <button class="tab-btn" data-tab="progress">下载进度</button>
       </div>
 
+      <!-- 连接告警横幅 -->
+      <div id="connAlert" class="conn-alert hidden">
+        <span>⚠ MIS 与课程平台均未连接，无法下载。请先 <a href="https://mis.bjtu.edu.cn/" target="_blank">登录 MIS 系统</a>，然后点击「重检」。</span>
+        <button id="connAlertClose" class="conn-alert-close" title="关闭">✕</button>
+      </div>
+
       <!-- 课件浏览 -->
       <div id="tabFiles" class="tab-content active">
         <div class="file-toolbar">
@@ -98,7 +103,7 @@
           <div class="file-toolbar-right">
             <button id="btnSelectAllFiles" class="btn btn-xs">全选</button>
             <button id="btnDeselectFiles" class="btn btn-xs">取消</button>
-            <button id="btnDownloadFiles" class="btn btn-primary btn-sm">⬇ 下载选中</button>
+            <button id="btnDownloadFiles" class="btn btn-primary btn-sm">下载选中</button>
           </div>
         </div>
         <div id="filePanel" class="file-panel">
@@ -124,7 +129,7 @@
   <!-- 重复下载确认弹窗 -->
   <div id="dupModal" class="modal-overlay hidden">
     <div class="modal-box">
-      <div class="modal-title">⚠ 部分文件已下载过</div>
+      <div class="modal-title">部分文件已下载过</div>
       <div class="modal-subtitle" id="dupModalSubtitle"></div>
       <div id="dupModalList" class="dup-list"></div>
       <div class="modal-actions">
